@@ -4,7 +4,7 @@ use strict;
 
 use vars qw($VERSION);
 
-$VERSION = 0.03;
+$VERSION = 0.04;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
@@ -384,8 +384,6 @@ sub handler ($$)
 
     my $err = $@;
 
-    $ah->clean_request_args;
-
     $app->clean_session if $class->UseSession;
 
     die $err if $err;
@@ -410,16 +408,13 @@ sub request_args
     my $self = shift;
     my $r = shift;
 
-    return $self->{__request_args__} if $self->{__request_args__};
+    return $r->pnotes('__request_args__') if $r->pnotes('__request_args__');
 
-    my $args = ($self->SUPER::request_args($r))[0];
+    my $args = ($self->SUPER::request_args($r))[0] || {};
 
-    return $self->{__request_args__} = $args || {};
-}
+    $r->pnotes( __request_args__ => $args );
 
-sub clean_request_args
-{
-    delete $_[0]->{__request_args__};
+    return $args;
 }
 
 
@@ -912,8 +907,6 @@ is the code:
 
       my $err = $@;
 
-      $ah->clean_request_args;
-
       $app->clean_session if $class->UseSession;
 
       die $err if $err;
@@ -950,15 +943,6 @@ without this caching Mason would not see any arguments at all!
 After creating a new webapp object, make sure to check the value of
 the C<redirected()> method for that object.  If it is true, you should
 return the C<REDIRECT> constant from Apache::Constants.
-
-=item
-
-You B<must> call C<clean_request_args()> on the ApacheHandler object
-at the end of the request, unless you are making a new ApacheHandler
-object for I<every> request.  Otherwise bad things will happen.
-
-This is lame, so if someone thinks of a better way to do this, I'd be
-happy to hear about it.
 
 =item
 
