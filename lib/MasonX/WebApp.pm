@@ -4,7 +4,7 @@ use strict;
 
 use vars qw($VERSION);
 
-$VERSION = 0.06;
+$VERSION = 0.07;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
@@ -38,7 +38,7 @@ use HTML::Mason::Interp;
 use URI;
 
 use Params::Validate
-    qw( validate validate_pos validate_with UNDEF SCALAR BOOLEAN HASHREF OBJECT );
+    qw( validate validate_pos validate_with UNDEF SCALAR BOOLEAN ARRAYREF HASHREF OBJECT );
 Params::Validate::validation_options
     ( on_fail => sub { param_error( join '', @_ ) } );
 
@@ -312,7 +312,7 @@ sub _handle_error
     my $self = shift;
 
     my %p = validate_with( params => \@_,
-                           spec   => { error     => { type => SCALAR|OBJECT },
+                           spec   => { error     => { type => SCALAR | ARRAYREF | OBJECT },
                                        save_args => { type => HASHREF, default => {} },
                                      },
                            allow_extra => 1,
@@ -325,6 +325,10 @@ sub _handle_error
     elsif ( UNIVERSAL::can( $p{error}, 'message' ) )
     {
         $self->_add_error_message( $p{error}->message );
+    }
+    elsif ( ref $p{error} eq 'ARRAY' )
+    {
+        $self->_add_error_message($_) for @{ $p{error} };
     }
     else
     {
@@ -621,7 +625,7 @@ Call C<_set_session()> if C<UseSession()> is true.
 Call C<_init()>, if you have an C<_init()> method defined in your
 subclass.  If additional arguments are given then they will be passed
 along to your C<_init()> method, if you have one.  The call to
-C<_init()> is wrapped in an eval block.  If an exception is throws,
+C<_init()> is wrapped in an eval block.  If an exception is thrown,
 and that exception is not a C<MasonX::WebApp::Exception::Redirect>
 exception, then it will be rethrown.  Redirect exceptions are I<not>
 rethrown.
@@ -841,8 +845,10 @@ It takes several parameters:
 
 =item * error
 
-This should be either a scalar or an object.  If it is a scalar, this
-is assumed to be a simple error message.
+This should be either a scalar, an array reference or an object.  If
+it is a scalar, this is assumed to be an error message.  If it an
+array reference, it is assumed to be an array reference of scalars,
+each of which contains a single message.
 
 If an object is given, then it first looks for a C<messages()> method
 in that object.  This method should return an array of scalars, each

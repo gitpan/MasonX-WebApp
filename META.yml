@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name: MasonX-WebApp
-version: 0.06
+version: 0.07
 author:
   - Dave Rolsky, <autarch@urth.org>
 abstract: |-
@@ -16,8 +16,8 @@ requires:
 provides:
   MasonX::WebApp:
     file: lib/MasonX/WebApp.pm
-    version: 0.06
+    version: 0.07
   MasonX::WebApp::ApacheHandler:
     file: lib/MasonX/WebApp.pm
-    version: 0.06
+    version: 0.07
 generated_by: Module::Build version 0.25_02

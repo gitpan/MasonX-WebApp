@@ -1,3 +1,9 @@
+0.07  2004-08-11
+
+- All the error parameter to _handle_error() to be an array reference
+of error messages.
+
+
 0.06  2004-08-06  (from Taiwan to you)
 
 - Arguments given new() besides apache_req and args are now passed
