@@ -1,3 +1,9 @@
+0.06  2004-08-06  (from Taiwan to you)
+
+- Arguments given new() besides apache_req and args are now passed
+through to the _init() method.
+
+
 0.05  2004-05-29
 
 - The handler method was broken.

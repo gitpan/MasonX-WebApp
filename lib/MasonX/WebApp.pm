@@ -4,7 +4,7 @@ use strict;
 
 use vars qw($VERSION);
 
-$VERSION = 0.05;
+$VERSION = 0.06;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
@@ -143,21 +143,22 @@ sub new
 {
     my $class = shift;
 
-    my %p = validate( @_,
-                      { apache_req => { isa  => 'Apache' },
-                        args       => { type => HASHREF },
-                      },
-                    );
+    my %p = validate_with( params => \@_,
+                           spec   => { apache_req => { isa  => 'Apache' },
+                                       args       => { type => HASHREF },
+                                     },
+                           allow_extra => 1,
+                         );
 
-    my $self =  bless { __apache_req__ => $p{apache_req},
-                        __args__       => $p{args},
+    my $self =  bless { __apache_req__ => delete $p{apache_req},
+                        __args__       => delete $p{args},
                       }, $class;
 
     $self->__set_wrapper if $self->UseSession;
 
     eval
     {
-        $self->_init if $self->can('_init');
+        $self->_init(%p) if $self->can('_init');
 
         $self->_handle_action;
     };
@@ -309,9 +310,6 @@ sub uri
 sub _handle_error
 {
     my $self = shift;
-
-    error "Cannot call session_wrapper() method unless UseSession is true"
-        unless $self->UseSession;
 
     my %p = validate_with( params => \@_,
                            spec   => { error     => { type => SCALAR|OBJECT },
@@ -598,7 +596,8 @@ from elsewhere, like in Mason components.
 
 =item * new()
 
-This is the constructor method.  It expects to receive two arguments:
+This is the constructor method.  It expects to receive at least two
+arguments:
 
 =over 8
 
@@ -620,10 +619,12 @@ The new method will do the following:
 Call C<_set_session()> if C<UseSession()> is true.
 
 Call C<_init()>, if you have an C<_init()> method defined in your
-subclass.  The call to C<_init()> is wrapped in an eval block.  If an
-exception is throws, and that exception is not a
-C<MasonX::WebApp::Exception::Redirect> exception, then it will be
-rethrown.  Redirect exceptions are I<not> rethrown.
+subclass.  If additional arguments are given then they will be passed
+along to your C<_init()> method, if you have one.  The call to
+C<_init()> is wrapped in an eval block.  If an exception is throws,
+and that exception is not a C<MasonX::WebApp::Exception::Redirect>
+exception, then it will be rethrown.  Redirect exceptions are I<not>
+rethrown.
 
 Call C<_handle_action()>.
 
