@@ -4,7 +4,7 @@ use strict;
 
 use vars qw($VERSION);
 
-$VERSION = 0.04;
+$VERSION = 0.05;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
@@ -365,7 +365,7 @@ sub handler ($$)
     my $class = shift;
     my $r     = shift;
 
-    my $ah = $class->_apache_handler_objects;
+    my $ah = $class->_apache_handler_object;
 
     my $args = $ah->request_args($r);
 
@@ -383,6 +383,12 @@ sub handler ($$)
     my $return = eval { $ah->handle_request($r) };
 
     my $err = $@;
+
+    # We want to wipe out the variable before the request ends,
+    # because if the $ah variable persists, then so does the interp,
+    # which means the $app object won't be destroyed until the next
+    # request in this process, which can hose up sessions big time.
+    $ah->interp->set_global( '$App' => undef );
 
     $app->clean_session if $class->UseSession;
 
@@ -776,7 +782,7 @@ C<Foo::Bar::WebApp::*>.
 
 =item * _make_session_wrapper
 
-This method is called during object construct if C<UseSession> is
+This method is called during object construction if C<UseSession> is
 true.  By default, it creates a new C<Apache::Session::Wrapper> object
 with the parameters from C<SessionWrapperParams>.  You can override
 this method to provide your own session wrapper creation.
@@ -888,7 +894,7 @@ is the code:
       my $class = shift;
       my $r     = shift;
 
-      my $ah = $class->_apache_handler_objects;
+      my $ah = $class->_apache_handler_object;
 
       my $args = $ah->request_args($r);
 
@@ -906,6 +912,12 @@ is the code:
       my $return = eval { $ah->handle_request($r) };
 
       my $err = $@;
+
+      # We want to wipe out the variable before the request ends,
+      # because if the $ah variable persists, then so does the interp,
+      # which means the $app object won't be destroyed until the next
+      # request in this process, which can hose up sessions big time.
+      $ah->interp->set_global( '$App' => undef );
 
       $app->clean_session if $class->UseSession;
 
@@ -950,6 +962,22 @@ If you are using the message, error message, or saved arg features,
 you should make sure that C<clean_session()> is called at the end of
 every request.  This means that you need to wrap the call to the
 ApacheHandler's C<handle_request()> method in an eval block.
+
+=item
+
+If you use the C<set_global()> method to make the webapp object
+available to your components, B<and> your ApacheHandler objects
+persist across requests, then you need to call C<set_global()> again
+after the request is handled, and this time set that global to undef.
+This ensures that the webapp object will be destroyed.
+
+A safer alternative, if you know what class your components will be
+compiled in, is to do this:
+
+ local $HTML::Mason::Commands::App = $app;
+
+The use of C<local> ensures that $app will go out of scope at the end
+of C<handler()> subroutine.
 
 =back
 
