@@ -4,7 +4,7 @@ use strict;
 
 use vars qw($VERSION);
 
-$VERSION = 0.02;
+$VERSION = 0.03;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
@@ -134,7 +134,7 @@ sub _LoadActions
 
     foreach my $sub ( $class->subclasses )
     {
-        eval "use $sub";
+        eval "use ${class}::$sub";
         die $@ if $@;
     }
 }
