@@ -1,0 +1,10 @@
+Build.PL
+Changes
+lib/MasonX/WebApp.pm
+LICENSE
+MANIFEST			This list of files
+META.yml
+README
+t/01-basic.t
+
+SIGNATURE    Added here by Module::Build
