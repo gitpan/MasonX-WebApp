@@ -4,7 +4,7 @@ use strict;
 
 use vars qw($VERSION);
 
-$VERSION = 0.01;
+$VERSION = 0.02;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
@@ -193,7 +193,7 @@ sub _make_session_wrapper
     return Apache::Session::Wrapper->new( %{ $_[0]->SessionWrapperParams } );
 }
 
- session_wrapper
+sub session_wrapper
 {
     error "Cannot call session_wrapper() method unless UseSession is true"
         unless $_[0]->UseSession;
