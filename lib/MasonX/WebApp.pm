@@ -4,12 +4,17 @@ use strict;
 
 use vars qw($VERSION);
 
-$VERSION = 0.07;
+$VERSION = 0.08;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
       { alias => 'error',
         description => 'Generic super-class for MasonX::WebApp exceptions' },
+
+      'MasonX::WebApp::Exception::Abort' =>
+      { isa   => 'MasonX::WebApp::Exception',
+        alias => 'abort_exception',
+        description => 'The abort method was called' },
 
       'MasonX::WebApp::Exception::Declaration' =>
       { isa   => 'MasonX::WebApp::Exception',
@@ -20,11 +25,6 @@ use Exception::Class
       { isa   => 'MasonX::WebApp::Exception',
         alias => 'param_error',
         description => 'Bad parameters given to a method/function' },
-
-      'MasonX::WebApp::Exception::Redirect' =>
-      { isa   => 'MasonX::WebApp::Exception',
-        alias => 'redirect_exception',
-        description => 'Web app code generated redirect' },
     );
 
 MasonX::WebApp::Exception->Trace(1);
@@ -158,14 +158,14 @@ sub new
 
     eval
     {
-        $self->_init(%p) if $self->can('_init');
+        $self->_init(%p);
 
         $self->_handle_action;
     };
 
     if ($@)
     {
-        if ( UNIVERSAL::isa( $@, 'MasonX::WebApp::Exception::Redirect' ) )
+        if ( UNIVERSAL::isa( $@, 'MasonX::WebApp::Exception::Abort' ) )
         {
             # This shouldn't propogate out to the caller
             undef $@;
@@ -178,6 +178,8 @@ sub new
 
     return $self;
 }
+
+sub _init { }
 
 sub apache_req { $_[0]->{__apache_req__} }
 sub args       { $_[0]->{__args__} }
@@ -249,11 +251,26 @@ sub redirect
 
         $r->send_http_header;
 
-        redirect_exception();
+        $self->abort( Apache::Constants::REDIRECT() );
     }
 }
 
+# kept for backwards compat - use aborted instead
 sub redirected { $_[0]->{__redirected__} }
+
+sub abort
+{
+    my $self = shift;
+    my $status = shift;
+
+    $self->{__aborted__} = 1;
+    $self->{__abort_status__} = defined $status ? $status : Apache::Constants::OK();
+
+    abort_exception;
+}
+
+sub aborted      { $_[0]->{__aborted__} }
+sub abort_status { $_[0]->{__abort_status__} }
 
 sub uri
 {
@@ -373,7 +390,7 @@ sub handler ($$)
 
     my $app = $class->new( $r, $args );
 
-    return Apache::Constants::REDIRECT() if $app->redirected;
+    return $app->abort_status if $app->aborted;
 
     if ( $ah->interp->compiler->can('add_allowed_globals')
          && defined $class->MasonGlobalName )
@@ -517,6 +534,12 @@ These methods are determined by removing a prefix from the URI
 (settable via a class method), and then using the remainder as a
 method name to be called on the webapp object.
 
+=item * Generate output without using Mason
+
+If you want to generate output that doesn't really need, like sending
+a PDF file for download, you can do that with your webapp object
+before Mason is invoked.
+
 =item * Messages, errors, and "saved arguments"
 
 If you are using sessions, the webapp object provides methods to store
@@ -622,9 +645,8 @@ The new method will do the following:
 
 Call C<_set_session()> if C<UseSession()> is true.
 
-Call C<_init()>, if you have an C<_init()> method defined in your
-subclass.  If additional arguments are given then they will be passed
-along to your C<_init()> method, if you have one.  The call to
+Call C<_init()>.  If additional arguments are given then they will be
+passed along to your C<_init()> method, if you have one.  The call to
 C<_init()> is wrapped in an eval block.  If an exception is thrown,
 and that exception is not a C<MasonX::WebApp::Exception::Redirect>
 exception, then it will be rethrown.  Redirect exceptions are I<not>
@@ -670,14 +692,32 @@ parameter to false, so you do not need to do this.
 If called inside the context of a Mason request, it calls
 C<redirect()> on the Mason request object.
 
-Otherwise it sets the value of C<redirected()> to true, sends a
-redirect using the apache request object, and then throws a
-C<MasonX::WebApp::Exception::Redirect> exception.
+Otherwise it sets the value of C<aborted()> to true, sends a redirect
+using the apache request object, and then throws a
+C<MasonX::WebApp::Exception::Aborted> exception.
 
-=item * redirected
+=item * abort( $status )
 
-Returns a boolean value indicating whether or not C<redirect()> has
-been called on the webapp object.
+Stops processing by throwing a C<MasonX::WebApp::Exception::Aborted>
+exception.  You can pass a status code (from C<Apache::Constants>) as
+an optional argument.  If nothing is given then this will default to
+C<OK>.  This status code will be available via the C<status_code()>
+method.
+
+You will need to use this method if you generate your own output in an
+action handling method and don't want to pass control to Mason
+afterwards.
+
+=item * aborted
+
+Returns a boolean value indicating whether or not C<abort()> has been
+called on the webapp object.  This will be true if the C<redirect()>
+method was called, since it uses C<abort()>.
+
+=item * abort_status
+
+The value passed to the C<abort()> method.  If no value was passed,
+this will the C<OK> constant from C<Apache::Constants>.
 
 =item * uri
 
@@ -784,6 +824,12 @@ them at once.  It looks for modules under your subclass's package name
 and loads them.  So if your subclass is in the package
 C<Foo::Bar::WebApp>, then it looks for modules matching
 C<Foo::Bar::WebApp::*>.
+
+=item * _init
+
+Called from the C<new()> method.  By default this does nothing, but
+you can override it to do something interesting with the newly created
+object.
 
 =item * _make_session_wrapper
 
@@ -907,7 +953,7 @@ is the code:
 
       my $app = $class->new( $r, $args );
 
-      return Apache::Constants::REDIRECT() if $app->redirected;
+      return $app->abort_status if $app->aborted;
 
       if ( $ah->interp->compiler->can('add_allowed_globals')
            && defined $class->MasonGlobalName )
@@ -960,8 +1006,9 @@ without this caching Mason would not see any arguments at all!
 =item
 
 After creating a new webapp object, make sure to check the value of
-the C<redirected()> method for that object.  If it is true, you should
-return the C<REDIRECT> constant from Apache::Constants.
+the C<aborted()> method for that object.  If it is true, you should
+the status code given by the C<abort_status()> method.  Remember, this
+will default to C<OK> if no status was given to the C<abort()> method.
 
 =item
 
