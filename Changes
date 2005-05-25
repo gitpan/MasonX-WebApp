@@ -1,3 +1,14 @@
+0.09  2005-05-25
+
+- Documented RequireAbortAfterAction declarative parameter.
+
+- Added overridable method _is_valid_action() to allow for more
+fine-grained control over what methods are exposed via URIs.
+
+- Made ActionURIPrefixRegex public.  This allows for more control over
+what can come before an action name in a URI.
+
+
 0.08  2004-08-16
 
 - Added abort() and abort_status() methods, to allow you to abort
@@ -9,8 +20,8 @@ re-implemented to use the new abort() method.
 
 0.07  2004-08-11
 
-- All the error parameter to _handle_error() to be an array reference
-of error messages.
+- Allow the error parameter to _handle_error() to be an array
+reference of error messages.
 
 
 0.06  2004-08-06  (from Taiwan to you)

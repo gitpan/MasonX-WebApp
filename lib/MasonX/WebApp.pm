@@ -4,7 +4,7 @@ use strict;
 
 use vars qw($VERSION);
 
-$VERSION = 0.08;
+$VERSION = 0.09;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
@@ -46,13 +46,13 @@ Params::Validate::validation_options
 BEGIN
 {
     __PACKAGE__->mk_classdata( 'ActionURIPrefix' );
-    __PACKAGE__->mk_classdata( '_ActionURIPrefixRegex' );
+    __PACKAGE__->mk_classdata( 'ActionURIPrefixRegex' );
 
     __PACKAGE__->mk_classdata( 'ApacheHandlerParams' );
 
     __PACKAGE__->mk_classdata( 'MasonGlobalName' );
 
-    __PACKAGE__->mk_classdata( 'RequireRedirectAfterAction' );
+    __PACKAGE__->mk_classdata( 'RequireAbortAfterAction' );
 
     __PACKAGE__->mk_classdata( 'SessionWrapperParams' );
     __PACKAGE__->mk_classdata( 'UseSession' );
@@ -60,7 +60,7 @@ BEGIN
     __PACKAGE__->ActionURIPrefix('/submit/');
     __PACKAGE__->MasonGlobalName('$WebApp');
     __PACKAGE__->UseSession(0);
-    __PACKAGE__->RequireRedirectAfterAction(1);
+    __PACKAGE__->RequireAbortAfterAction(1);
 }
 
 sub UseSession
@@ -122,7 +122,7 @@ sub ActionURIPrefix
 
         $class->_ActionURIPrefix_accessor($prefix);
 
-        $class->_ActionURIPrefixRegex( qr/^\Q$prefix\E/ );
+        $class->ActionURIPrefixRegex( qr/^\Q$prefix\E/ );
     }
 
     return $class->_ActionURIPrefix_accessor;
@@ -154,10 +154,10 @@ sub new
                         __args__       => delete $p{args},
                       }, $class;
 
-    $self->__set_wrapper if $self->UseSession;
-
     eval
     {
+        $self->__set_wrapper if $self->UseSession;
+
         $self->_init(%p);
 
         $self->_handle_action;
@@ -210,22 +210,25 @@ sub _handle_action
 {
     my $self = shift;
 
-    return if $self->redirected;
+    return if $self->aborted;
 
-    my $prefix_re = $self->_ActionURIPrefixRegex;
+    my $prefix_re = $self->ActionURIPrefixRegex;
     my ($action) = $self->apache_req->uri =~ m{$prefix_re(\w+)};
 
     return unless defined $action && length $action;
 
-    param_error "Invalid action: $action" unless $self->can($action);
+    param_error "Invalid action: $action"
+        unless $self->_is_valid_action($action);
 
     $self->$action();
 
-    # This code is unlikely to be executed, as issuing a redirect
-    # causes an exception
-    error "No redirect was issued after the $action action."
-        unless $self->redirected || ! $self->RequireRedirectAfterAction;
+    # This code is unlikely to be executed, as issuing an abort causes
+    # an exception
+    error "No abort was issued after the $action action."
+        unless $self->aborted || ! $self->RequireAbortAfterAction;
 }
+
+sub _is_valid_action { $_[0]->can( $_[1] ) }
 
 sub redirect
 {
@@ -573,6 +576,19 @@ C<login()> method will be called.
 
 If you change this, your prefix must also start and with a slash (/).
 
+Setting this will override a previous setting of
+C<ActionURIPrefixRegex>, so do not set both of these parameters in
+your subclass.
+
+=item * ActionURIPrefixRegex
+
+If you want to do something more complex than specifying one prefix,
+you can use this method to specify a regex which determines if a URI
+is calling an action.  For example, you might want to allow both
+F</submit/> and F</download/> as prefixes:
+
+  $self->ActionURIPrefixRegex( qr{^/(?:submit|download)/} );
+
 =item * ApacheHandlerParams
 
 This should be a hash reference of options that will be passed to the
@@ -591,6 +607,14 @@ The variable name to use for the webapp object in Mason components.
 The default C<handler()> sets this global.
 
 The default value for this is C<$WebApp>.
+
+=item * RequireAbortAfterAction
+
+If this is true, then an exception will be thrown if an action is
+handled but no abort is generated inside the action method.  A
+redirect is a form of abort.
+
+This defaults to true.
 
 =item * SessionWrapperParams
 
@@ -656,32 +680,32 @@ Call C<_handle_action()>.
 
 Return the newly created webapp object.
 
-=item * apache_req
+=item * apache_req()
 
 Returns the Apache request given to the C<new()> method.
 
-=item * args
+=item * args()
 
 Returns a hash reference containing the arguments passed to the
 C<new()> method.  Since this is the same reference as is stored in the
 C<MasonX::WebApp::ApacheHandler> object, any changes to this reference
 will be visible to Mason components.
 
-=item * session_wrapper
+=item * session_wrapper()
 
 Returns the C<Apache::Session::Wrapper> object for the webapp object.
 
 If C<UseSession()> is not true, calling this method throws an
 exception.
 
-=item * session
+=item * session()
 
 A shortcut for calling C<< $webapp->session_wrapper->session >>.
 
 If C<UseSession()> is not true, calling this method throws an
 exception.
 
-=item * redirect
+=item * redirect()
 
 This method can take a number of named parameters.  If it is given a
 "uri" parameter, then it uses this URI for the redirection.
@@ -708,18 +732,18 @@ You will need to use this method if you generate your own output in an
 action handling method and don't want to pass control to Mason
 afterwards.
 
-=item * aborted
+=item * aborted()
 
 Returns a boolean value indicating whether or not C<abort()> has been
 called on the webapp object.  This will be true if the C<redirect()>
 method was called, since it uses C<abort()>.
 
-=item * abort_status
+=item * abort_status()
 
 The value passed to the C<abort()> method.  If no value was passed,
 this will the C<OK> constant from C<Apache::Constants>.
 
-=item * uri
+=item * uri()
 
 This creates a URI string based on the parameters it receives.  It
 accepts the following parameters:
@@ -768,7 +792,7 @@ any ampersands (&) in the query string HTML-escaped (&amp;).
 
 =back
 
-=item * messages
+=item * messages()
 
 Returns an array of non-error messages stored in the session.  This
 method is I<destructive>, as calling it removes the messages from the
@@ -778,7 +802,7 @@ If you are not using sessions, calling this method throws an
 exception.
 
 
-=item * errors
+=item * errors()
 
 Returns an array of error messages stored in the session.  This method
 is I<destructive>, as calling it removes the error messages from the
@@ -787,7 +811,7 @@ session.
 If you are not using sessions, calling this method throws an
 exception.
 
-=item * saved_args
+=item * saved_args()
 
 Returns a hash reference of arguments saved in the session.  This
 method is I<not> destructive.  If you are saving arguments in the
@@ -798,7 +822,7 @@ this.
 If you are not using sessions, calling this method throws an
 exception.
 
-=item * clean_session
+=item * clean_session()
 
 Removes any messages, error messages, and saved args stored in the
 session.  This should be called a the end of each request in order to
@@ -811,34 +835,48 @@ exception.
 
 =head2 Protected Methods
 
-These methods are intended to be called, and/or overridden by your
+These methods are intended to be called directly or overridden by your
 subclass.
 
 =over 4
 
-=item * _LoadActions
+=item * _LoadActions()
 
 If you want to define actions in other files, like
 C<My::WebApp::User>, this method provides a handy way to load all of
 them at once.  It looks for modules under your subclass's package name
-and loads them.  So if your subclass is in the package
-C<Foo::Bar::WebApp>, then it looks for modules matching
-C<Foo::Bar::WebApp::*>.
+and loads them.  So if your subclass is in the package C<My::WebApp>,
+then it looks for modules matching C<My::WebApp::*>.
 
-=item * _init
+Note that because C<MasonX::WebApp> will call action methods on
+C<$self>, all of these modules must set the package to the same thing.
+In the example, above, all of the action modules would need to set
+their package to C<My::WebApp>.
+
+You can always override C<_handle_action()> to implement your own
+action dispaching if you dislike this restriction.
+
+=item * _init()
 
 Called from the C<new()> method.  By default this does nothing, but
 you can override it to do something interesting with the newly created
 object.
 
-=item * _make_session_wrapper
+=item * _is_valid_action()
+
+This method takes an action name and returns a boolean value
+indicating whether or not the action is valid.  By default, this
+simply checks if C<< $self->can($action) >>, but you should consider
+overriding this to restrict what methods can be called via a URI.
+
+=item * _make_session_wrapper()
 
 This method is called during object construction if C<UseSession> is
 true.  By default, it creates a new C<Apache::Session::Wrapper> object
 with the parameters from C<SessionWrapperParams>.  You can override
 this method to provide your own session wrapper creation.
 
-=item * _handle_action
+=item * _handle_action()
 
 This method is called during object construction.  If a redirect was
 done earlier in the object creation process, then it does nothing.
@@ -853,7 +891,7 @@ requests.
 Note that this method should I<not> call out to Mason.  It should only
 be used for actions that don't need Mason.
 
-=item * _save_arg
+=item * _save_arg()
 
 Given a key and value, this method saves them in the session so that
 they will be available via the C<saved_args()> method.
@@ -861,7 +899,7 @@ they will be available via the C<saved_args()> method.
 If C<UseSession()> is not true, calling this method throws an
 exception.
 
-=item * _add_message
+=item * _add_message()
 
 Given a string, this method stores that string in the session so that
 it is available via the C<messages()> method.
@@ -869,7 +907,7 @@ it is available via the C<messages()> method.
 If C<UseSession()> is not true, calling this method throws an
 exception.
 
-=item * _add_error_message
+=item * _add_error_message()
 
 Given a string, this method stores that string in the session so that
 it is available via the C<errors()> method.
@@ -877,7 +915,7 @@ it is available via the C<errors()> method.
 If C<UseSession()> is not true, calling this method throws an
 exception.
 
-=item * _handle_error
+=item * _handle_error()
 
 This method can be used to handle exceptions that occur during
 actions.
@@ -919,7 +957,7 @@ All other arguments are passed along to the C<redirect()> method.
 If C<UseSession()> is not true, calling this method throws an
 exception.
 
-=item * _apache_handler_object
+=item * _apache_handler_object()
 
 This method is called in the default C<handler()> method in order to
 create a new C<MasonX::WebApp::ApacheHandler> object.  It simply calls
