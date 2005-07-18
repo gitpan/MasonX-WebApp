@@ -1,3 +1,20 @@
+0.10  2005-07-17
+
+- The handler() sub provided by MasonX::WebApp was broken, as was the
+version in the docs.  Reported by George Hartzell.
+
+- If your subclass did not call $class->ApacheHandlerParams() and set
+some parameters, then MasonX::WebApp's default handler() would fail.
+Reported by Lee Carmichael.
+
+- Fix handling of MasonGlobalName.  Reported by George Hartzell.
+
+- Shut up annoying "subroutine redefined" warnings from
+MasonX::WebApp.
+
+- Added some real tests
+
+
 0.09  2005-05-25
 
 - Documented RequireAbortAfterAction declarative parameter.

@@ -2,9 +2,11 @@ package MasonX::WebApp;
 
 use strict;
 
+use 5.006;
+
 use vars qw($VERSION);
 
-$VERSION = 0.09;
+$VERSION = 0.10;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
@@ -62,6 +64,8 @@ BEGIN
     __PACKAGE__->UseSession(0);
     __PACKAGE__->RequireAbortAfterAction(1);
 }
+
+{ no warnings 'redefine';
 
 sub UseSession
 {
@@ -179,6 +183,8 @@ sub new
     return $self;
 }
 
+} # no warnings 'redefine'
+
 sub _init { }
 
 sub apache_req { $_[0]->{__apache_req__} }
@@ -193,7 +199,7 @@ sub __set_wrapper
 
 sub _make_session_wrapper
 {
-    return Apache::Session::Wrapper->new( %{ $_[0]->SessionWrapperParams } );
+    return Apache::Session::Wrapper->new( %{ $_[0]->SessionWrapperParams || {} } );
 }
 
 sub session_wrapper
@@ -213,6 +219,9 @@ sub _handle_action
     return if $self->aborted;
 
     my $prefix_re = $self->ActionURIPrefixRegex;
+
+    return unless defined $prefix_re;
+
     my ($action) = $self->apache_req->uri =~ m{$prefix_re(\w+)};
 
     return unless defined $action && length $action;
@@ -386,12 +395,13 @@ sub handler ($$)
 {
     my $class = shift;
     my $r     = shift;
+    my $apr   = Apache::Request->new($r);
 
     my $ah = $class->_apache_handler_object;
 
-    my $args = $ah->request_args($r);
+    my $args = $ah->request_args($apr);
 
-    my $app = $class->new( $r, $args );
+    my $app = $class->new( apache_req => $apr, args => $args );
 
     return $app->abort_status if $app->aborted;
 
@@ -399,7 +409,7 @@ sub handler ($$)
          && defined $class->MasonGlobalName )
     {
         $ah->interp->compiler->add_allowed_globals( $class->MasonGlobalName );
-        $ah->interp->set_global( '$App' => $class->MasonGlobalName );
+        $ah->interp->set_global( $class->MasonGlobalName => $app );
     }
 
     my $return = eval { $ah->handle_request($r) };
@@ -410,7 +420,7 @@ sub handler ($$)
     # because if the $ah variable persists, then so does the interp,
     # which means the $app object won't be destroyed until the next
     # request in this process, which can hose up sessions big time.
-    $ah->interp->set_global( '$App' => undef );
+    $ah->interp->set_global( $class->MasonGlobalName => undef );
 
     $app->clean_session if $class->UseSession;
 
@@ -423,7 +433,7 @@ sub _apache_handler_object
 {
     my $class = shift;
 
-    return MasonX::WebApp::ApacheHandler->new( %{ $class->ApacheHandlerParams } );
+    return MasonX::WebApp::ApacheHandler->new( %{ $class->ApacheHandlerParams || {} } );
 }
 
 
@@ -984,12 +994,13 @@ is the code:
   {
       my $class = shift;
       my $r     = shift;
+      my $apr   = Apache::Request->new($r);
 
       my $ah = $class->_apache_handler_object;
 
-      my $args = $ah->request_args($r);
+      my $args = $ah->request_args($apr);
 
-      my $app = $class->new( $r, $args );
+      my $app = $class->new( apache_req => $apr, args => $args );
 
       return $app->abort_status if $app->aborted;
 
@@ -997,7 +1008,7 @@ is the code:
            && defined $class->MasonGlobalName )
       {
           $ah->interp->compiler->add_allowed_globals( $class->MasonGlobalName );
-          $ah->interp->set_global( '$App' => $class->MasonGlobalName );
+          $ah->interp->set_global( $class->MasonGlobalName => $app );
       }
 
       my $return = eval { $ah->handle_request($r) };
@@ -1008,7 +1019,7 @@ is the code:
       # because if the $ah variable persists, then so does the interp,
       # which means the $app object won't be destroyed until the next
       # request in this process, which can hose up sessions big time.
-      $ah->interp->set_global( '$App' => undef );
+      $ah->interp->set_global( $class->MasonGlobalName => undef );
 
       $app->clean_session if $class->UseSession;
 

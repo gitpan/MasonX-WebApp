@@ -5,5 +5,9 @@ LICENSE
 MANIFEST			This list of files
 META.yml
 README
-t/01-basic.t
+t/abort.t
+t/action.t
+t/new.t
+t/session-wrapper.t
+Makefile.PL
 SIGNATURE    Added here by Module::Build

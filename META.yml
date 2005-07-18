@@ -1,6 +1,6 @@
 ---
 name: MasonX-WebApp
-version: 0.09
+version: 0.1
 author:
   - 'Dave Rolsky, <autarch@urth.org>'
 abstract: Works with Mason to do processing before Mason is invoked
@@ -12,11 +12,16 @@ requires:
   Exception::Class: 0
   HTML::Mason: 1.1
   URI: 0
+  perl: 5.006
+recommends:
+  Test::Output: 0
+build_requires:
+  Test::Exception: 0
 provides:
   MasonX::WebApp:
     file: lib/MasonX/WebApp.pm
-    version: 0.09
+    version: 0.1
   MasonX::WebApp::ApacheHandler:
     file: lib/MasonX/WebApp.pm
-    version: 0.09
-generated_by: Module::Build version 0.261
+    version: 0.1
+generated_by: Module::Build version 0.2611
