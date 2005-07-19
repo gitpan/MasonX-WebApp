@@ -1,6 +1,6 @@
 ---
 name: MasonX-WebApp
-version: 0.1
+version: 0.11
 author:
   - 'Dave Rolsky, <autarch@urth.org>'
 abstract: Works with Mason to do processing before Mason is invoked
@@ -20,8 +20,8 @@ build_requires:
 provides:
   MasonX::WebApp:
     file: lib/MasonX/WebApp.pm
-    version: 0.1
+    version: 0.11
   MasonX::WebApp::ApacheHandler:
     file: lib/MasonX/WebApp.pm
-    version: 0.1
-generated_by: Module::Build version 0.2611
+    version: ~
+generated_by: Module::Build version 0.2701

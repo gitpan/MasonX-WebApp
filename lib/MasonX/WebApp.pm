@@ -6,7 +6,7 @@ use 5.006;
 
 use vars qw($VERSION);
 
-$VERSION = 0.10;
+$VERSION = 0.11;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
@@ -448,6 +448,11 @@ sub request_args
 
     return $r->pnotes('__request_args__') if $r->pnotes('__request_args__');
 
+    MasonX::WebApp::Exception->throw
+        ( "request_args() requires an Apache::Request object or you must set "
+          . "the ApacheHandler object's args_method parameter to 'CGI'" )
+            if $self->args_method eq 'mod_perl' && ! $r->can('param');
+
     my $args = ($self->SUPER::request_args($r))[0] || {};
 
     $r->pnotes( __request_args__ => $args );
@@ -473,14 +478,26 @@ MasonX::WebApp - Works with Mason to do processing before Mason is invoked
 
   sub _init
   {
-      # do neat stuff
+      # do something interesting, like making sure all incoming
+      # arguments are UTF-8
+  }
+
+  # Create a handler() for it
+
+  package My::MasonHandler;
+
+  my $ah = MasonX::WebApp::ApacheHandler->new( ... );
+
+  sub handler
+  {
+      # see docs for details
   }
 
   # In your Apache config file
 
   <Location />
     SetHandler   perl-script
-    PerlHandler  My::WebApp
+    PerlHandler  My::MasonHandler
   </Location>
 
 =head1 DESCRIPTION
@@ -664,8 +681,8 @@ arguments:
 
 =item * apache_req
 
-An Apache request object, which must be an object in the C<Apache>
-class, or a subclass (like C<Apache::Request> or C<Apache::Filter>).
+An Apache request object, which must be an C<Apache> object
+or a subclass's object.
 
 =item * args
 
@@ -987,53 +1004,17 @@ provides.
 
 =head2 The Default handler() Method
 
-The C<MasonX::WebApp> class provides a default handler method.  This
-is the code:
+The C<MasonX::WebApp> class provides a default handler method.
 
-  sub handler ($$)
-  {
-      my $class = shift;
-      my $r     = shift;
-      my $apr   = Apache::Request->new($r);
-
-      my $ah = $class->_apache_handler_object;
-
-      my $args = $ah->request_args($apr);
-
-      my $app = $class->new( apache_req => $apr, args => $args );
-
-      return $app->abort_status if $app->aborted;
-
-      if ( $ah->interp->compiler->can('add_allowed_globals')
-           && defined $class->MasonGlobalName )
-      {
-          $ah->interp->compiler->add_allowed_globals( $class->MasonGlobalName );
-          $ah->interp->set_global( $class->MasonGlobalName => $app );
-      }
-
-      my $return = eval { $ah->handle_request($r) };
-
-      my $err = $@;
-
-      # We want to wipe out the variable before the request ends,
-      # because if the $ah variable persists, then so does the interp,
-      # which means the $app object won't be destroyed until the next
-      # request in this process, which can hose up sessions big time.
-      $ah->interp->set_global( $class->MasonGlobalName => undef );
-
-      $app->clean_session if $class->UseSession;
-
-      die $err if $err;
-
-      return $return;
-  }
-
-I would recommend that instead of using this, you create your own
-mod_perl handler that does something similar, because this one is not
-very efficient, given that it creates a new
+I would recommend that instead of using this method, you create your
+own mod_perl handler that does something similar, because the default
+is not very efficient, given that it creates a new
 C<MasonX::WebApp::ApacheHandler> object for each request.  It is
 provided primarily as a reference implementation, and so that others
 can experiment with this webapp code quickly.
+
+When creating your own handler, it might be useful to copy the one in
+this module as a reference.
 
 In your own handler, there are several important guidelines you should
 follow.
@@ -1042,10 +1023,11 @@ follow.
 
 =item
 
-First of all, your should use the C<MasonX::WebApp::ApacheHandler>
-class.  This is a subclass of Mason's ApacheHandler class that caches
-the value of C<request_args()>.  This is done so that these arguments
-can be passed to the C<MasonX::WebApp> constructor and still be made
+First of all, your C<handler()> should use the
+C<MasonX::WebApp::ApacheHandler> class for the ApacheHandler object,
+not C<HTML::Mason::ApacheHandler>.  The MasonX subclass caches the
+value of C<request_args()>.  This is done so that these arguments can
+be passed to the C<MasonX::WebApp> constructor and still be made
 available to Mason.  It also makes sure that Mason's arguments are the
 I<same> hash reference as is available from the C<args()> method.
 This is very important if you want to do any argument munging in your
@@ -1054,17 +1036,29 @@ without this caching Mason would not see any arguments at all!
 
 =item
 
+Get the request arguments by calling C<request_args()> on the
+ApacheHandler object, passing an C<Apache> object as the method's
+argument.  Unless you set the ApacheHandler's C<args_method> parameter
+to "CGI", you must pass in an C<ApacheRequest> object.
+
+You will need to pass the hash reference returned by this method to
+the constructor for your WebApp object.
+
+=item
+
 After creating a new webapp object, make sure to check the value of
 the C<aborted()> method for that object.  If it is true, you should
-the status code given by the C<abort_status()> method.  Remember, this
-will default to C<OK> if no status was given to the C<abort()> method.
+return the status code given by the C<abort_status()> method from your
+C<handler()>.  Remember, this will default to C<OK> if no status was
+given to the C<abort()> method.
 
 =item
 
 If you are using the message, error message, or saved arg features,
 you should make sure that C<clean_session()> is called at the end of
 every request.  This means that you need to wrap the call to the
-ApacheHandler's C<handle_request()> method in an eval block.
+ApacheHandler's C<handle_request()> method in an eval block, as in the
+default C<handler()>
 
 =item
 
@@ -1097,12 +1091,42 @@ If you do something cool with this code, write about it on the Mason
 HQ site, masonhq.com (which is a big wiki), or send a post to the
 Mason users list.
 
-=head1 BUGS
+=head3 Example handler()
 
-As of this writing, the most recent version of
-Class::Data::Inheritable (0.02) has a bug which causes subroutine
-redefined errors when C<MasonX::WebApp> is loaded.  These errors can
-safely be ignored.
+Here is an example of an alternate handler().  This one is written as
+a function, not a method.
+
+  package My::MasonHandler;
+
+  sub handler
+  {
+      my $apr = Apache::Request->new(shift);
+
+      my $args = $ah->request_args($apr);
+
+      my $app = $class->new( apache_req => $apr, args => $args );
+
+      return $app->abort_status if $app->aborted;
+
+      local $My::ComponentPackage::WebApp = $app;
+
+      my $return = eval { $ah->handle_request($r) };
+
+      my $err = $@;
+
+      $app->clean_session if $class->UseSession;
+
+      die $err if $err;
+
+      return $return;
+   }
+
+Then in your Apache configuration, you would use this handler:
+
+  <Location />
+    SetHandler   perl-script
+    PerlHandler  My::MasonHandler
+  </Location>
 
 =head1 SEE ALSO
 
