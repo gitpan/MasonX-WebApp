@@ -1,10 +1,12 @@
 ---
 name: MasonX-WebApp
-version: 0.11
+version: 0.12
 author:
   - 'Dave Rolsky, <autarch@urth.org>'
 abstract: Works with Mason to do processing before Mason is invoked
 license: perl
+resources:
+  license: http://dev.perl.org/licenses/
 requires:
   Apache::Session::Wrapper: 0.17
   Class::Data::Inheritable: 0
@@ -13,15 +15,18 @@ requires:
   HTML::Mason: 1.1
   URI: 0
   perl: 5.006
+build_requires:
+  Module::Build: 0
+  Test::Exception: 0
 recommends:
   Test::Output: 0
-build_requires:
-  Test::Exception: 0
 provides:
   MasonX::WebApp:
     file: lib/MasonX/WebApp.pm
-    version: 0.11
+    version: 0.12
   MasonX::WebApp::ApacheHandler:
     file: lib/MasonX/WebApp.pm
-    version: ~
-generated_by: Module::Build version 0.2701
+generated_by: Module::Build version 0.2806
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.2.html
+  version: 1.2

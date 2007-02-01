@@ -6,7 +6,7 @@ use 5.006;
 
 use vars qw($VERSION);
 
-$VERSION = 0.11;
+$VERSION = 0.12;
 
 use Exception::Class
     ( 'MasonX::WebApp::Exception' =>
@@ -33,7 +33,41 @@ MasonX::WebApp::Exception->Trace(1);
 
 use base 'Class::Data::Inheritable';
 
-use Apache::Constants ();
+my $ModPerlVersion;
+my $ApReqClass;
+BEGIN
+{
+    if ( $ENV{MOD_PERL} && $ENV{MOD_PERL} =~ /1\.99|2\.0/ )
+    {
+        require mod_perl2;
+    }
+    elsif ( $ENV{MOD_PERL} )
+    {
+        require mod_perl;
+    }
+
+    $ModPerlVersion = (mod_perl2->VERSION || mod_perl->VERSION || 0);
+
+    if ( $ModPerlVersion >= 1.99 && $ModPerlVersion < 1.999022 )
+    {
+        die "mod_perl-1.99 is not supported; upgrade to 2.00";
+    }
+
+    if ( $ModPerlVersion < 1.99 )
+    {
+        eval "use Apache::Constants qw( OK REDIRECT )";
+        require Apache::Request;
+        $ApReqClass = 'Apache::Request';
+    }
+    else
+    {
+        eval "use Apache2::Const qw( OK REDIRECT )";
+        require Apache2::RequestUtil;
+        require Apache2::Request;
+        $ApReqClass = 'Apache2::Request';
+    }
+    die $@ if $@;
+}
 
 use Class::Factory::Util;
 use HTML::Mason::Interp;
@@ -143,16 +177,24 @@ sub _LoadActions
     }
 }
 
+} # no warnings 'redefine'
+
 sub new
 {
     my $class = shift;
 
-    my %p = validate_with( params => \@_,
-                           spec   => { apache_req => { isa  => 'Apache' },
-                                       args       => { type => HASHREF },
-                                     },
-                           allow_extra => 1,
-                         );
+    my %p =
+        validate_with
+            ( params => \@_,
+              spec   =>
+              { apache_req =>
+                { can  => [ qw( method uri err_headers_out
+                                headers_in status pnotes ) ],
+                },
+                args => { type => HASHREF },
+              },
+              allow_extra => 1,
+            );
 
     my $self =  bless { __apache_req__ => delete $p{apache_req},
                         __args__       => delete $p{args},
@@ -182,8 +224,6 @@ sub new
 
     return $self;
 }
-
-} # no warnings 'redefine'
 
 sub _init { }
 
@@ -258,12 +298,13 @@ sub redirect
 
         $r->method('GET');
         $r->headers_in->unset('Content-length');
-        $r->err_header_out( Location => $uri );
-        $r->status( Apache::Constants::REDIRECT() );
+        $r->err_headers_out->add( Location => $uri );
+        $r->status( REDIRECT );
 
-        $r->send_http_header;
+        $r->send_http_header
+            if $ModPerlVersion < 1.99;
 
-        $self->abort( Apache::Constants::REDIRECT() );
+        $self->abort( REDIRECT );
     }
 }
 
@@ -276,7 +317,7 @@ sub abort
     my $status = shift;
 
     $self->{__aborted__} = 1;
-    $self->{__abort_status__} = defined $status ? $status : Apache::Constants::OK();
+    $self->{__abort_status__} = defined $status ? $status : OK;
 
     abort_exception;
 }
@@ -391,11 +432,11 @@ sub errors   { my $s = $_[0]->session;
 
 sub clean_session { delete @{ $_[0]->session }{ qw( __messages__ __errors__ __saved_args__ ) } }
 
-sub handler ($$)
+sub handler ($$) : method
 {
     my $class = shift;
     my $r     = shift;
-    my $apr   = Apache::Request->new($r);
+    my $apr   = $ApReqClass->new($r);
 
     my $ah = $class->_apache_handler_object;
 

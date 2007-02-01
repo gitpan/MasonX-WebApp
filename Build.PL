@@ -15,8 +15,9 @@ Module::Build->new
                        'perl'                     => 5.006,
                      },
       recommends     => { 'Test::Output' => 0 },
-      build_requires => { 'Test::Exception' => 0 },
-
+      build_requires => { 'Module::Build'   => 0,
+                          'Test::Exception' => 0,
+                        },
       create_makefile_pl => 'passthrough',
-      sign        => 1,
+      sign           => 1,
     )->create_build_script;
